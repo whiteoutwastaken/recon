@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Recon — Competitive Intelligence</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background: #0a0d14; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+    .sidebar { background: #0f1320; border-right: 1px solid #1e2535; }
+    .card { background: #0f1320; border: 1px solid #1e2535; border-radius: 12px; }
+    .card-glow:hover { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59,130,246,0.1); transition: all 0.2s; }
+    .badge-positive { background: #052e16; color: #4ade80; }
+    .badge-negative { background: #2d0a0a; color: #f87171; }
+    .badge-neutral   { background: #1a1f2e; color: #94a3b8; }
+    .event-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+    .dot-product  { background:#3b82f6; }
+    .dot-hire     { background:#22c55e; }
+    .dot-pricing  { background:#f97316; }
+    .dot-patent   { background:#a855f7; }
+    .dot-funding  { background:#ef4444; }
+    .dot-news     { background:#64748b; }
+    .dot-partnership { background:#06b6d4; }
+    .confidence-bar { height:6px; border-radius:3px; background:#1e2535; overflow:hidden; }
+    .confidence-fill { height:100%; border-radius:3px; transition: width 0.5s; }
+    .tab-btn { padding:8px 16px; border-radius:8px; font-size:14px; cursor:pointer; transition:all 0.15s; color:#64748b; }
+    .tab-btn.active { background:#1e2535; color:#e2e8f0; }
+    .tab-btn:hover { color:#e2e8f0; }
+    .sparkline { width:80px; height:30px; }
+    #voice-panel { transform: translateX(100%); transition: transform 0.3s ease; }
+    #voice-panel.open { transform: translateX(0); }
+    .thinking { display:none; }
+    .thinking.show { display:flex; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .pulse { animation: pulse-dot 1.2s infinite; }
+    .pulse:nth-child(2) { animation-delay:0.2s; }
+    .pulse:nth-child(3) { animation-delay:0.4s; }
+    ::-webkit-scrollbar { width:4px; }
+    ::-webkit-scrollbar-track { background:#0a0d14; }
+    ::-webkit-scrollbar-thumb { background:#1e2535; border-radius:2px; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+<!-- SIDEBAR -->
+<aside class="sidebar w-60 flex flex-col flex-shrink-0">
+  <div class="p-5 border-b border-gray-800">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">R</div>
+      <span class="font-semibold text-white text-lg tracking-tight">Recon</span>
+    </div>
+    <p class="text-xs text-gray-500 mt-1">Competitive Intelligence</p>
+  </div>
+  <nav class="flex-1 overflow-y-auto p-3">
+    <p class="text-xs text-gray-600 uppercase tracking-wider px-2 mb-2 mt-1">Competitors</p>
+    <div id="competitor-list" class="space-y-1">
+      <div class="text-gray-600 text-sm px-2 py-2">Loading...</div>
+    </div>
+  </nav>
+  <div class="p-3 border-t border-gray-800">
+    <button onclick="runIngest()" class="w-full text-xs text-gray-500 hover:text-blue-400 py-2 transition-colors">
+      ⟳ Refresh Intel
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="flex-1 flex flex-col overflow-hidden">
+
+  <!-- HEADER -->
+  <header class="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
+    <div>
+      <h1 id="page-title" class="text-white font-semibold text-lg">Overview</h1>
+      <p class="text-gray-500 text-xs" id="page-subtitle">All competitors</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="generateBriefing()" id="briefing-btn"
+        class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors">
+        <span>▶</span> Daily Briefing
+      </button>
+      <button onclick="toggleVoicePanel()"
+        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+        <span>🎙</span> Ask Recon
+      </button>
+    </div>
+  </header>
+
+  <!-- TAB BAR -->
+  <div class="flex gap-1 px-6 pt-4 border-b border-gray-800 flex-shrink-0">
+    <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
+    <button class="tab-btn" onclick="switchTab('timeline', this)">Timeline</button>
+    <button class="tab-btn" onclick="switchTab('intel', this)">Intel Feed</button>
+    <button class="tab-btn" onclick="switchTab('patterns', this)">Pattern Alerts</button>
+    <button class="tab-btn" onclick="switchTab('charts', this)">Trends</button>
+    <button class="tab-btn" onclick="switchTab('compare', this)">Compare</button>
+  </div>
+
+  <!-- CONTENT -->
+  <main class="flex-1 overflow-y-auto p-6 space-y-6">
+
+    <!-- OVERVIEW TAB -->
+    <div id="tab-overview">
+      <!-- Metrics Cards -->
+      <div id="metrics-row" class="grid grid-cols-3 gap-4 mb-6">
+        <div class="card p-4 col-span-3 text-center text-gray-600 text-sm">Select a competitor to see metrics</div>
+      </div>
+      <!-- Pattern Alerts preview -->
+      <div class="card p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-white font-medium">Pattern Alerts</h2>
+          <button onclick="switchTab('patterns', document.querySelectorAll('.tab-btn')[3])" class="text-blue-400 text-xs hover:underline">View all →</button>
+        </div>
+        <div id="overview-patterns" class="space-y-3">
+          <p class="text-gray-600 text-sm">Loading patterns...</p>
+        </div>
+      </div>
+      <!-- Recent Events -->
+      <div class="card p-5">
+        <h2 class="text-white font-medium mb-4">Recent Events</h2>
+        <div id="overview-events" class="space-y-3">
+          <p class="text-gray-600 text-sm">Select a competitor or wait for data...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIMELINE TAB -->
+    <div id="tab-timeline" class="hidden">
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-white font-medium">Event Timeline</h2>
+          <div class="flex gap-2 flex-wrap text-xs">
+            <span class="flex items-center gap-1"><span class="event-dot dot-product"></span>Product</span>
+            <span class="flex items-center gap-1"><span class="event-dot dot-hire"></span>Hiring</span>
+            <span class="flex items-center gap-1"><span class="event-dot dot-pricing"></span>Pricing</span>
+            <span class="flex items-center gap-1"><span class="event-dot dot-patent"></span>Patent</span>
+            <span class="flex items-center gap-1"><span class="event-dot dot-funding"></span>Funding</span>
+            <span class="flex items-center gap-1"><span class="event-dot dot-news"></span>News</span>
+          </div>
+        </div>
+        <div id="timeline-container" class="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+          <p class="text-gray-600 text-sm">Select a competitor to view timeline.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- INTEL TAB -->
+    <div id="tab-intel" class="hidden">
+      <div id="intel-feed" class="space-y-3">
+        <p class="text-gray-600 text-sm">Select a competitor to view intel.</p>
+      </div>
+    </div>
+
+    <!-- PATTERNS TAB -->
+    <div id="tab-patterns" class="hidden">
+      <div id="patterns-container" class="space-y-4">
+        <p class="text-gray-600 text-sm">Loading patterns...</p>
+      </div>
+    </div>
+
+    <!-- CHARTS TAB -->
+    <div id="tab-charts" class="hidden">
+      <div class="card p-5 mb-4">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-white font-medium">Trend Analysis</h2>
+          <select id="metric-selector" onchange="renderChart()" class="bg-gray-800 text-gray-300 text-sm rounded-lg px-3 py-1.5 border border-gray-700">
+            <option value="headcount">Headcount</option>
+            <option value="hiring_velocity">Hiring Velocity</option>
+            <option value="sentiment">Sentiment</option>
+            <option value="news_volume">News Volume</option>
+          </select>
+        </div>
+        <canvas id="trend-chart" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- COMPARE TAB -->
+    <div id="tab-compare" class="hidden">
+      <div class="card p-5 mb-4">
+        <h2 class="text-white font-medium mb-4">Competitor Comparison</h2>
+        <canvas id="radar-chart" height="120"></canvas>
+      </div>
+      <div id="compare-table" class="card p-5"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- VOICE / CHAT PANEL -->
+<div id="voice-panel" class="fixed right-0 top-0 h-full w-96 bg-gray-900 border-l border-gray-800 flex flex-col z-50 shadow-2xl">
+  <div class="flex items-center justify-between p-4 border-b border-gray-800">
+    <div class="flex items-center gap-2">
+      <div class="w-2 h-2 rounded-full bg-green-400"></div>
+      <span class="text-white font-medium text-sm">Ask Recon</span>
+    </div>
+    <button onclick="toggleVoicePanel()" class="text-gray-500 hover:text-white text-lg">✕</button>
+  </div>
+  <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
+  <div class="thinking p-4" id="thinking-indicator">
+    <div class="flex items-center gap-2 text-gray-500 text-sm">
+      <div class="w-2 h-2 rounded-full bg-blue-400 pulse"></div>
+      <div class="w-2 h-2 rounded-full bg-blue-400 pulse"></div>
+      <div class="w-2 h-2 rounded-full bg-blue-400 pulse"></div>
+      <span>Recon is thinking...</span>
+    </div>
+  </div>
+  <div class="p-4 border-t border-gray-800">
+    <div class="flex gap-2">
+      <input id="chat-input" type="text" placeholder="Ask about any competitor..."
+        class="flex-1 bg-gray-800 text-white text-sm rounded-lg px-3 py-2.5 border border-gray-700 focus:outline-none focus:border-blue-500"
+        onkeydown="if(event.key==='Enter') sendQuery()"/>
+      <button onclick="sendQuery()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm transition-colors">→</button>
+    </div>
+    <div class="flex gap-2 mt-2 flex-wrap">
+      <button onclick="quickQuery('What are the latest pattern alerts?')" class="text-xs text-gray-600 hover:text-blue-400 transition-colors">Pattern alerts</button>
+      <button onclick="quickQuery('Give me a competitive overview')" class="text-xs text-gray-600 hover:text-blue-400 transition-colors">Overview</button>
+      <button onclick="quickQuery('Who is winning in AI features?')" class="text-xs text-gray-600 hover:text-blue-400 transition-colors">AI race</button>
+    </div>
+  </div>
+</div>
+
+<!-- BRIEFING MODAL -->
+<div id="briefing-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+  <div class="card p-6 max-w-lg w-full mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-white font-semibold">Daily Briefing</h2>
+      <button onclick="closeBriefing()" class="text-gray-500 hover:text-white">✕</button>
+    </div>
+    <div id="briefing-text" class="text-gray-300 text-sm leading-relaxed"></div>
+    <div id="briefing-audio-section" class="mt-4 hidden">
+      <audio id="briefing-audio" controls class="w-full"></audio>
+    </div>
+    <p id="briefing-loading" class="text-gray-500 text-sm">Generating briefing...</p>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:5000/api';
+let selectedCompetitor = null;
+let allCompetitors = [];
+let trendChartInstance = null;
+let radarChartInstance = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadCompetitors();
+  await loadPatterns();
+}
+
+// ── Competitors ───────────────────────────────────────────────────────────────
+async function loadCompetitors() {
+  try {
+    const res = await fetch(`${API}/competitors`);
+    allCompetitors = await res.json();
+    renderSidebar();
+    if (allCompetitors.length > 0) selectCompetitor(allCompetitors[0].id);
+  } catch (e) {
+    document.getElementById('competitor-list').innerHTML =
+      '<p class="text-red-400 text-xs px-2">Could not connect to backend</p>';
+  }
+}
+
+function renderSidebar() {
+  const list = document.getElementById('competitor-list');
+  if (!allCompetitors.length) {
+    list.innerHTML = '<p class="text-gray-600 text-xs px-2">No competitors seeded yet</p>';
+    return;
+  }
+  list.innerHTML = allCompetitors.map(c => `
+    <button onclick="selectCompetitor('${c.id}')" id="nav-${c.id}"
+      class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-gray-800 transition-colors group">
+      <div class="w-7 h-7 rounded-lg bg-gray-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+        ${c.name.charAt(0)}
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm text-gray-300 group-hover:text-white truncate">${c.name}</p>
+        <p class="text-xs text-gray-600 truncate">${c.industry || ''}</p>
+      </div>
+    </button>
+  `).join('');
+}
+
+async function selectCompetitor(id) {
+  selectedCompetitor = id;
+  // Highlight sidebar
+  document.querySelectorAll('[id^="nav-"]').forEach(el => {
+    el.classList.remove('bg-gray-800', 'text-white');
+  });
+  const navEl = document.getElementById(`nav-${id}`);
+  if (navEl) navEl.classList.add('bg-gray-800');
+
+  const comp = allCompetitors.find(c => c.id === id);
+  if (comp) {
+    document.getElementById('page-title').textContent = comp.name;
+    document.getElementById('page-subtitle').textContent = `${comp.industry || ''} · ${comp.hq || ''}`;
+  }
+
+  await Promise.all([
+    loadMetrics(id),
+    loadEvents(id),
+    loadIntel(id),
+    loadPatterns(id),
+  ]);
+  renderChart();
+}
+
+// ── Metrics Cards (5.2) ───────────────────────────────────────────────────────
+async function loadMetrics(id) {
+  const row = document.getElementById('metrics-row');
+  try {
+    const res = await fetch(`${API}/competitor/${id}/metrics`);
+    const data = await res.json();
+    const metricKeys = ['headcount', 'hiring_velocity', 'sentiment', 'news_volume', 'funding', 'product_count'];
+    const labels = {
+      headcount: 'Headcount', hiring_velocity: 'Hiring Velocity',
+      sentiment: 'Sentiment', news_volume: 'News Volume',
+      funding: 'Funding ($M)', product_count: 'Products'
+    };
+    const cards = metricKeys.map(key => {
+      const series = data[key] || [];
+      if (!series.length) return '';
+      const latest = series[series.length - 1].value;
+      const prev = series.length > 1 ? series[series.length - 2].value : latest;
+      const change = prev !== 0 ? ((latest - prev) / Math.abs(prev) * 100).toFixed(1) : 0;
+      const arrow = change > 0 ? '↑' : change < 0 ? '↓' : '→';
+      const color = change > 0 ? 'text-green-400' : change < 0 ? 'text-red-400' : 'text-gray-400';
+      const displayVal = key === 'sentiment' ? latest.toFixed(2) :
+                         key === 'funding' ? `$${(latest/1e6).toFixed(0)}M` :
+                         latest.toLocaleString();
+      return `
+        <div class="card card-glow p-4">
+          <p class="text-gray-500 text-xs mb-1">${labels[key]}</p>
+          <p class="text-white text-2xl font-semibold">${displayVal}</p>
+          <p class="text-xs mt-1 ${color}">${arrow} ${Math.abs(change)}% vs prior</p>
+        </div>`;
+    }).join('');
+    row.innerHTML = cards || '<div class="card p-4 col-span-3 text-center text-gray-600 text-sm">No metrics data yet</div>';
+  } catch (e) {
+    row.innerHTML = '<div class="card p-4 col-span-3 text-center text-red-400 text-sm">Failed to load metrics</div>';
+  }
+}
+
+// ── Timeline (5.3) ────────────────────────────────────────────────────────────
+async function loadEvents(id) {
+  try {
+    const res = await fetch(`${API}/competitor/${id}/events`);
+    const events = await res.json();
+    renderTimeline(events);
+    renderOverviewEvents(events.slice(0, 5));
+  } catch (e) {}
+}
+
+function eventDotClass(type) {
+  const map = {
+    product_launch: 'dot-product', hire_surge: 'dot-hire', pricing_change: 'dot-pricing',
+    patent: 'dot-patent', funding: 'dot-funding', news: 'dot-news', partnership: 'dot-partnership'
+  };
+  return map[type] || 'dot-news';
+}
+
+function sentimentBadge(score) {
+  if (score > 0.2) return '<span class="badge-positive text-xs px-2 py-0.5 rounded-full">Positive</span>';
+  if (score < -0.2) return '<span class="badge-negative text-xs px-2 py-0.5 rounded-full">Negative</span>';
+  return '<span class="badge-neutral text-xs px-2 py-0.5 rounded-full">Neutral</span>';
+}
+
+function renderTimeline(events) {
+  const container = document.getElementById('timeline-container');
+  if (!events.length) {
+    container.innerHTML = '<p class="text-gray-600 text-sm">No events found.</p>';
+    return;
+  }
+  container.innerHTML = events.map(e => `
+    <div class="flex gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer group"
+         onclick="toggleEventDetail('event-${e.id}')">
+      <div class="event-dot ${eventDotClass(e.event_type)} mt-1"></div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-start justify-between gap-2">
+          <p class="text-gray-200 text-sm font-medium leading-snug">${e.title}</p>
+          <span class="text-gray-600 text-xs flex-shrink-0">${e.date}</span>
+        </div>
+        <div id="event-${e.id}" class="hidden mt-2 space-y-1">
+          <p class="text-gray-400 text-xs leading-relaxed">${e.description || ''}</p>
+          <div class="flex items-center gap-2 mt-1">
+            ${sentimentBadge(e.sentiment_score || 0)}
+            ${e.source_url ? `<a href="${e.source_url}" target="_blank" class="text-blue-400 text-xs hover:underline">Source →</a>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleEventDetail(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('hidden');
+}
+
+function renderOverviewEvents(events) {
+  const container = document.getElementById('overview-events');
+  if (!events.length) { container.innerHTML = '<p class="text-gray-600 text-sm">No events yet.</p>'; return; }
+  container.innerHTML = events.map(e => `
+    <div class="flex gap-3 items-start">
+      <div class="event-dot ${eventDotClass(e.event_type)}"></div>
+      <div>
+        <p class="text-gray-300 text-sm">${e.title}</p>
+        <p class="text-gray-600 text-xs">${e.date}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Intel Feed (5.4) ──────────────────────────────────────────────────────────
+async function loadIntel(id) {
+  const feed = document.getElementById('intel-feed');
+  try {
+    const res = await fetch(`${API}/competitor/${id}/intel`);
+    const items = await res.json();
+    if (!items.length) { feed.innerHTML = '<p class="text-gray-600 text-sm">No intel articles found.</p>'; return; }
+    feed.innerHTML = items.map(item => `
+      <div class="card card-glow p-4">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <p class="text-gray-200 text-sm font-medium leading-snug flex-1">
+            ${item.source_url
+              ? `<a href="${item.source_url}" target="_blank" class="hover:text-blue-400 transition-colors">${item.title}</a>`
+              : item.title}
+          </p>
+          ${sentimentBadge(item.sentiment_score || 0)}
+        </div>
+        <p class="text-gray-500 text-xs leading-relaxed">${item.description || ''}</p>
+        <div class="flex items-center justify-between mt-2">
+          <span class="text-gray-700 text-xs">${item.date}</span>
+          <div class="flex items-center gap-1">
+            ${Array.from({length: 5}, (_,i) =>
+              `<div class="w-1.5 h-1.5 rounded-full ${i < (item.importance_score||0) ? 'bg-blue-400' : 'bg-gray-700'}"></div>`
+            ).join('')}
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    feed.innerHTML = '<p class="text-red-400 text-sm">Failed to load intel.</p>';
+  }
+}
+
+// ── Pattern Alerts (5.5) ──────────────────────────────────────────────────────
+async function loadPatterns(competitorId = null) {
+  const url = competitorId ? `${API}/patterns?competitor_id=${competitorId}` : `${API}/patterns`;
+  try {
+    const res = await fetch(url);
+    const patterns = await res.json();
+    renderPatterns(patterns, 'patterns-container');
+    renderOverviewPatterns(patterns.slice(0, 2));
+  } catch (e) {}
+}
+
+function confidenceColor(conf) {
+  if (conf >= 0.8) return { border: 'border-red-500/50', fill: 'bg-red-500', label: 'HIGH' };
+  if (conf >= 0.5) return { border: 'border-yellow-500/50', fill: 'bg-yellow-500', label: 'MED' };
+  return { border: 'border-blue-500/50', fill: 'bg-blue-500', label: 'LOW' };
+}
+
+function renderPatterns(patterns, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!patterns.length) { container.innerHTML = '<p class="text-gray-600 text-sm">No patterns detected yet. Run pattern detection to find signals.</p>'; return; }
+  container.innerHTML = patterns.map(p => {
+    const c = confidenceColor(p.confidence || 0);
+    const pct = Math.round((p.confidence || 0) * 100);
+    return `
+      <div class="card card-glow p-5 border ${c.border}">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded" style="background:rgba(255,255,255,0.05)">${c.label}</span>
+            <h3 class="text-white font-medium text-sm">${p.description || 'Pattern detected'}</h3>
+          </div>
+          <span class="text-gray-500 text-xs flex-shrink-0">${(p.detected_at||'').split('T')[0]}</span>
+        </div>
+        <div class="confidence-bar mb-3">
+          <div class="confidence-fill ${c.fill}" style="width:${pct}%"></div>
+        </div>
+        ${p.historical_precedent ? `<p class="text-gray-500 text-xs mb-2">📚 ${p.historical_precedent}</p>` : ''}
+        ${p.prediction ? `<p class="text-gray-300 text-xs mb-3">🔮 <strong class="text-gray-200">Prediction:</strong> ${p.prediction}</p>` : ''}
+        <button onclick="askAboutPattern('${(p.description||'').replace(/'/g,"\\'")}') "
+          class="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+          Ask Recon about this →
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function renderOverviewPatterns(patterns) {
+  const container = document.getElementById('overview-patterns');
+  if (!patterns.length) { container.innerHTML = '<p class="text-gray-600 text-sm">No patterns detected yet.</p>'; return; }
+  container.innerHTML = patterns.map(p => {
+    const c = confidenceColor(p.confidence || 0);
+    const pct = Math.round((p.confidence || 0) * 100);
+    return `
+      <div class="p-3 rounded-lg bg-gray-800/50 border ${c.border}">
+        <p class="text-gray-200 text-sm">${p.description}</p>
+        <div class="confidence-bar mt-2">
+          <div class="confidence-fill ${c.fill}" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Trend Charts (5.6) ────────────────────────────────────────────────────────
+async function renderChart() {
+  if (!selectedCompetitor) return;
+  const metric = document.getElementById('metric-selector').value;
+  try {
+    const res = await fetch(`${API}/competitor/${selectedCompetitor}/metrics`);
+    const data = await res.json();
+    const series = data[metric] || [];
+    if (!series.length) return;
+
+    const labels = series.map(d => d.date);
+    const values = series.map(d => d.value);
+
+    // Simple linear projection for next 3 months
+    const n = values.length;
+    const xMean = (n - 1) / 2;
+    const yMean = values.reduce((a, b) => a + b, 0) / n;
+    const slope = values.reduce((sum, y, i) => sum + (i - xMean) * (y - yMean), 0) /
+                  values.reduce((sum, _, i) => sum + (i - xMean) ** 2, 0);
+    const intercept = yMean - slope * xMean;
+
+    const projLabels = ['Month+1', 'Month+2', 'Month+3'];
+    const projValues = [1, 2, 3].map(i => +(intercept + slope * (n + i - 1)).toFixed(1));
+
+    const ctx = document.getElementById('trend-chart');
+    if (trendChartInstance) trendChartInstance.destroy();
+    trendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [...labels, ...projLabels],
+        datasets: [
+          {
+            label: metric,
+            data: [...values, null, null, null],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+          },
+          {
+            label: 'Projection',
+            data: [...values.map(() => null), values[values.length-1], ...projValues],
+            borderColor: '#3b82f6',
+            borderDash: [5, 5],
+            backgroundColor: 'rgba(59,130,246,0.05)',
+            fill: false,
+            tension: 0.4,
+            pointRadius: 3,
+            pointStyle: 'rectRot',
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#94a3b8', font: { size: 12 } } } },
+        scales: {
+          x: { ticks: { color: '#64748b' }, grid: { color: '#1e2535' } },
+          y: { ticks: { color: '#64748b' }, grid: { color: '#1e2535' } }
+        }
+      }
+    });
+  } catch (e) {}
+}
+
+// ── Compare View (5.7) ────────────────────────────────────────────────────────
+async function renderCompare() {
+  if (allCompetitors.length < 2) return;
+  const ids = allCompetitors.slice(0, 3).map(c => c.id).join(',');
+  try {
+    const res = await fetch(`${API}/compare?ids=${ids}`);
+    const data = await res.json();
+
+    const metrics = ['headcount', 'hiring_velocity', 'sentiment', 'news_volume'];
+    const colors = ['rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)', 'rgba(249,115,22,0.7)'];
+
+    const ctx = document.getElementById('radar-chart');
+    if (radarChartInstance) radarChartInstance.destroy();
+
+    const datasets = Object.entries(data).map(([id, info], i) => {
+      const vals = metrics.map(m => info.latest_metrics[m] || 0);
+      const max = Math.max(...vals, 1);
+      return {
+        label: info.profile.name,
+        data: vals.map(v => (v / max * 100).toFixed(1)),
+        borderColor: colors[i],
+        backgroundColor: colors[i].replace('0.7', '0.2'),
+        pointBackgroundColor: colors[i],
+      };
+    });
+
+    radarChartInstance = new Chart(ctx, {
+      type: 'radar',
+      data: {
+        labels: ['Headcount', 'Hiring Velocity', 'Sentiment', 'News Volume'],
+        datasets
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#94a3b8' } } },
+        scales: {
+          r: {
+            ticks: { color: '#64748b', backdropColor: 'transparent' },
+            grid: { color: '#1e2535' },
+            pointLabels: { color: '#94a3b8' }
+          }
+        }
+      }
+    });
+
+    // Comparison table
+    const table = document.getElementById('compare-table');
+    const headers = ['Metric', ...Object.values(data).map(d => d.profile.name)];
+    const rows = metrics.map(m => {
+      const vals = Object.values(data).map(d => d.latest_metrics[m] ?? '—');
+      const numVals = vals.map(v => typeof v === 'number' ? v : -Infinity);
+      const maxIdx = numVals.indexOf(Math.max(...numVals));
+      return `<tr class="border-t border-gray-800">
+        <td class="py-2 px-3 text-gray-400 text-sm capitalize">${m.replace('_', ' ')}</td>
+        ${vals.map((v, i) => `<td class="py-2 px-3 text-sm text-center ${i === maxIdx ? 'text-green-400 font-semibold' : 'text-gray-300'}">${typeof v === 'number' ? v.toLocaleString() : v}</td>`).join('')}
+      </tr>`;
+    }).join('');
+
+    table.innerHTML = `
+      <h2 class="text-white font-medium mb-3">Metrics Breakdown</h2>
+      <table class="w-full">
+        <thead><tr>${headers.map(h => `<th class="text-left py-2 px-3 text-gray-500 text-xs uppercase">${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch (e) {}
+}
+
+// ── Chat / Voice Panel ────────────────────────────────────────────────────────
+function toggleVoicePanel() {
+  document.getElementById('voice-panel').classList.toggle('open');
+}
+
+function quickQuery(q) {
+  document.getElementById('chat-input').value = q;
+  sendQuery();
+}
+
+function askAboutPattern(desc) {
+  document.getElementById('voice-panel').classList.add('open');
+  document.getElementById('chat-input').value = `Tell me more about this pattern: ${desc}`;
+  sendQuery();
+}
+
+async function sendQuery() {
+  const input = document.getElementById('chat-input');
+  const query = input.value.trim();
+  if (!query) return;
+  input.value = '';
+
+  appendMessage('user', query);
+  document.getElementById('thinking-indicator').classList.add('show');
+
+  try {
+    const res = await fetch(`${API}/agent/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    const data = await res.json();
+    document.getElementById('thinking-indicator').classList.remove('show');
+
+    const answer = data.answer || data.error || 'No response.';
+    appendMessage('assistant', answer);
+
+    if (data.suggested_followups?.length) {
+      appendFollowups(data.suggested_followups);
+    }
+  } catch (e) {
+    document.getElementById('thinking-indicator').classList.remove('show');
+    appendMessage('assistant', 'Could not reach backend. Make sure Flask is running.');
+  }
+}
+
+function appendMessage(role, text) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = role === 'user'
+    ? 'flex justify-end'
+    : 'flex justify-start';
+  div.innerHTML = `
+    <div class="max-w-[85%] rounded-xl px-3 py-2.5 text-sm leading-relaxed ${
+      role === 'user'
+        ? 'bg-blue-600 text-white'
+        : 'bg-gray-800 text-gray-200'
+    }">${text.replace(/\n/g, '<br>')}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function appendFollowups(followups) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'space-y-1';
+  div.innerHTML = followups.map(q =>
+    `<button onclick="quickQuery('${q.replace(/'/g, "\\'")}')"
+       class="block text-left text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors">${q}</button>`
+  ).join('');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ── Briefing (4.3) ────────────────────────────────────────────────────────────
+async function generateBriefing() {
+  document.getElementById('briefing-modal').classList.remove('hidden');
+  document.getElementById('briefing-text').textContent = '';
+  document.getElementById('briefing-loading').textContent = 'Generating briefing...';
+  document.getElementById('briefing-audio-section').classList.add('hidden');
+
+  try {
+    const res = await fetch(`${API}/voice/briefing`);
+    const data = await res.json();
+    document.getElementById('briefing-loading').textContent = '';
+    document.getElementById('briefing-text').textContent = data.text || data.response;
+    if (data.audio_url) {
+      document.getElementById('briefing-audio').src = data.audio_url;
+      document.getElementById('briefing-audio-section').classList.remove('hidden');
+    }
+  } catch (e) {
+    document.getElementById('briefing-loading').textContent = 'Failed to generate briefing.';
+  }
+}
+
+function closeBriefing() {
+  document.getElementById('briefing-modal').classList.add('hidden');
+}
+
+// ── Ingest trigger ────────────────────────────────────────────────────────────
+async function runIngest() {
+  if (!selectedCompetitor) return;
+  try {
+    await fetch(`${API}/ingest/${selectedCompetitor}`, { method: 'POST' });
+    await selectCompetitor(selectedCompetitor);
+  } catch (e) {}
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById(`tab-${name}`).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (name === 'charts') renderChart();
+  if (name === 'compare') renderCompare();
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
