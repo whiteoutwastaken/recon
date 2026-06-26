@@ -87,7 +87,7 @@ def voice_briefing():
     if not events:
         return jsonify({"response": "No data available for briefing yet.", "text": ""})
 
-    events_text = "\n".join([f"- {dict(e)['company_name']}: {dict(e)['title']} ({dict(e)['date']})" for e in events])
+    events_text = "\n".join([f"- {dict(e)['company_name']}: {dict(e)['title']} ({dict(e).get('event_date', dict(e).get('date', ''))})" for e in events])
     patterns_text = "\n".join([f"- {dict(p)['description']} (prediction: {dict(p)['prediction']})" for p in patterns]) or "No patterns detected yet."
 
     response = client.chat.completions.create(

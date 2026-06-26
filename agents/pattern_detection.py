@@ -32,7 +32,7 @@ def _detect_pricing_war(conn) -> list[dict]:
         "SELECT competitor_id, date FROM events WHERE event_type = 'pricing_change' ORDER BY date DESC LIMIT 20"
     ).fetchall()
     from datetime import timedelta
-    dates = [(r["competitor_id"], datetime.fromisoformat(r["date"])) for r in rows]
+    dates = [(r["competitor_id"], datetime.fromisoformat(str(r.get("event_date", r.get("date", "")))[:19])) for r in rows if r.get("event_date") or r.get("date")]
     for i in range(len(dates)):
         for j in range(i + 1, len(dates)):
             cid_a, date_a = dates[i]
